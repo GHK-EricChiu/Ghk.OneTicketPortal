@@ -187,7 +187,7 @@ downloadErrorZh = '';
       this.decision = String(payload['decision'] ?? '');
       this.referenceNo = String(payload['reference_number'] ?? '');
       this.amount = String(payload['amount'] ?? '');
-      this.canInovicePrint =  (payload['canInvoicePrint'] ?? 'true') == 'true';
+      this.canInovicePrint =  (payload['canInvoicePrint'] ?? 'false') == 'true';
     }
       fetch('assets/config.json')
     .then(r => r.json())
