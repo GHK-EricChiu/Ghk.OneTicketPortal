@@ -176,10 +176,6 @@ private apiUrl = '';
       this.decision = String(payload['decision'] ?? '');
       this.referenceNo = String(payload['reference_number'] ?? '');
       this.amount = String(payload['amount'] ?? '');
-    }else{
-      this.decision = 'ACCEPT';
-      this.referenceNo = '200';
-      this.amount = '100';
     }
       fetch('assets/config.json')
     .then(r => r.json())
