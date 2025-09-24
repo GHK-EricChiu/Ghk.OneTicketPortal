@@ -34,7 +34,7 @@ interface TermsResponse {
         </div>
         <div class="terms-actions" *ngIf="canGoBack">
           <button   class="ghk-btn-back" (click)="onBack()">
-  Back / <br>
+  Back <br>
   <span lang="zh">返回</span>
 </button>
 </div>

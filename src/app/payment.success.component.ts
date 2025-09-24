@@ -1,7 +1,12 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
- import * as CryptoJS from 'crypto-js';
+import * as CryptoJS from 'crypto-js';
+
+import { HttpClient } from '@angular/common/http';
+
+
+
 
 const SECRET_KEY = 'C7fX9pQ2LmZ4r8aN1vS6dW3tG0yHb5kE';
 
@@ -96,14 +101,27 @@ export function decryptPayload(data: string): Record<string, unknown> {
           <span>Amount:</span>
           <span class="amt">HKD {{ amount }}</span>
         </div>
-
+<div class="btn-row" *ngIf="referenceNo">
+  <button class="dl-btn" (click)="downloadInvoice()">
+    Download Invoice
+    <span lang="zh" class="ghk-zh">下載收據</span>
+  </button>
+</div>
 
       </section>
     </main>
   `,
   styles: [`
     :host { display:block; width:100%; }
-
+.btn-row { margin-top: 12px; display:flex; justify-content:center; }
+.dl-btn {
+  border: 0; border-radius: 12px; padding: 10px 16px; cursor: pointer;
+  background: var(--ghk-blue, #0066b3); color: #fff; font-weight: 600;
+  box-shadow: 0 6px 16px rgba(0,102,179,.25); transition: transform .15s ease, box-shadow .15s ease;
+}
+.dl-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,102,179,.3); }
+.dl-btn:active { transform: translateY(0); box-shadow: 0 4px 12px rgba(0,102,179,.25); }
+.ghk-zh { display:block; font-size: 12px; opacity:.9; }
   /* Fill the AVAILABLE space in the shell-main, not the whole viewport */
   .success-container {
     min-height: 100%;
@@ -141,6 +159,8 @@ export class PaymentSuccessComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
 
+private http = inject(HttpClient);
+private apiUrl = '';
   decision = '';
   referenceNo = '';
   amount = '';
@@ -156,9 +176,36 @@ export class PaymentSuccessComponent implements OnInit {
       this.decision = String(payload['decision'] ?? '');
       this.referenceNo = String(payload['reference_number'] ?? '');
       this.amount = String(payload['amount'] ?? '');
+    }else{
+      this.decision = 'ACCEPT';
+      this.referenceNo = '200';
+      this.amount = '100';
     }
+      fetch('assets/config.json')
+    .then(r => r.json())
+    .then(cfg => { this.apiUrl = cfg.apiUrl ?? ''; });
   }
+downloadInvoice() {
+  if (!this.referenceNo || !this.apiUrl) return;
 
+
+  const url = `${this.apiUrl}/api/Ticket/GetInvoicePrintout`;
+  this.http.post(url, JSON.stringify(this.referenceNo), {
+    headers: { 'Content-Type': 'application/json' },
+    responseType: 'blob'
+  }).subscribe({
+    next: (blob) => {
+      const file = new Blob([blob], { type: 'application/pdf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(file);
+      link.download = `invoice-${this.referenceNo.replace(/[^A-Za-z0-9._-]/g,'')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(link.href);
+    }
+  });
+}
   onCheckReceipt() {
     // If you have a receipt route or backend receipt URL, push to it here.
     // Example: /receipt?ref=...

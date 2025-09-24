@@ -14,8 +14,21 @@ interface TicketInfo {
   statusMessageEn?: string;
   statusMessageZh?: string;
   amount? : string;
+  summary?: BillingSummary;
 }
 
+
+interface BillingSummary {
+  invoiceNum?: string;
+  items?: BillingItem[];
+}
+
+interface BillingItem {
+  type?: string;
+  itemName?: string;
+  totalCharge: number;
+  billingItemTypeCode?: string | null;
+}
 interface PaymentInitResponse {
   paymentUrl: string;
   fields: Record<string, string>;
@@ -96,16 +109,15 @@ interface PaymentInitResponse {
             </button>
 
             <div *ngIf="showPaymentOptions">
-
-              <div class="ghk-payment-amount">
-                <span>Amount:</span>
-                 <span class="ghk-payment-amount-value">
-    {{ ticketInfo?.amount | number:'1.2-2' }} HKD
-  </span>
+            <div class="ghk-btotal">
+                <div>
+                  <span>BALANCE DUE</span><br>
+                  <span lang="zh" class="ghk-zh-line">應繳金額</span>
+                </div>
+                <div class="ghk-bamt">{{ balanceDue | number:'1.2-2' }}</div>
               </div>
 
-
-              <div class="ghk-payment-options">
+                 <div class="ghk-payment-options">
                 <div class="ghk-payment-icons">
                   <button class="ghk-pay-icon-btn" (click)="onPay('visa')" title="Visa">
                     <img src="assets/payment/visa.svg" alt="Visa" />
@@ -129,9 +141,96 @@ interface PaymentInitResponse {
                   <!--  <img src="assets/payment/googlepay.svg" alt="Google Pay" title="Google Pay" />-->
                   <!--  <img src="assets/payment/applepay.svg" alt="Apple Pay" title="Apple Pay" />  -->
                 </div>
+                  <div class="ghk-ticket-status-divider"></div>
               </div>
 
               <div *ngIf="payError" class="ghk-pay-error">{{ payError }}</div>
+           <div *ngIf="ticketInfo?.summary" class="ghk-billing-summary">
+
+  <!-- Hospital Fee -->
+  <div class="ghk-bgrp">
+    <div class="ghk-btitle">
+      <span>HOSPITAL FEE</span>
+      <span lang="zh" class="ghk-zh-line">醫院收費</span>
+    </div>
+
+    <div class="ghk-brow" *ngFor="let it of hospitalItems">
+      <div class="ghk-bname">{{ it.itemName }}</div>
+      <div class="ghk-bamt">{{ it.totalCharge | number:'1.2-2' }}</div>
+    </div>
+
+    <div class="ghk-bsubtotal">
+      <div>
+        <span>Total Hospital Charges</span><br>
+        <span lang="zh" class="ghk-zh-line">總醫院收費</span>
+      </div>
+      <div class="ghk-bamt">{{ hospitalTotal | number:'1.2-2' }}</div>
+    </div>
+  </div>
+
+  <div class="ghk-ticket-status-divider"></div>
+
+  <!-- Doctor Fee -->
+  <div class="ghk-bgrp">
+    <div class="ghk-btitle">
+      <span>DOCTOR FEE</span>
+      <span lang="zh" class="ghk-zh-line">醫生收費</span>
+    </div>
+
+    <div class="ghk-brow" *ngFor="let it of doctorItems">
+      <div class="ghk-bname">{{ it.itemName }}</div>
+      <div class="ghk-bamt">{{ it.totalCharge | number:'1.2-2' }}</div>
+    </div>
+
+    <div class="ghk-bsubtotal">
+      <div>
+        <span>Total Doctor Charges</span><br>
+        <span lang="zh" class="ghk-zh-line">總醫生收費</span>
+      </div>
+      <div class="ghk-bamt">{{ doctorTotal | number:'1.2-2' }}</div>
+    </div>
+  </div>
+
+  <div class="ghk-ticket-status-divider"></div>
+
+  <!-- Less (Discount) -->
+  <div class="ghk-bgrp" *ngIf="discountItems.length">
+    <div class="ghk-btitle">
+      <span>LESS</span>
+      <span lang="zh" class="ghk-zh-line">扣減</span>
+    </div>
+
+    <div class="ghk-brow" *ngFor="let it of discountItems">
+      <div class="ghk-bname">{{ it.itemName }}</div>
+      <div class="ghk-bamt">{{ it.totalCharge | number:'1.2-2' }}</div>
+    </div>
+
+    <div class="ghk-bsubtotal">
+      <div>
+        <span>LESS</span><br>
+        <span lang="zh" class="ghk-zh-line">扣減</span>
+      </div>
+      <div class="ghk-bamt">{{ discountTotal | number:'1.2-2' }}</div>
+    </div>
+  </div>
+
+  <div class="ghk-ticket-status-divider"></div>
+
+  <!-- Grand Total -->
+  <div class="ghk-btotal">
+    <div>
+      <span>Grand Total</span><br>
+      <span lang="zh" class="ghk-zh-line">總額</span>
+    </div>
+    <div class="ghk-bamt">{{ grandTotal | number:'1.2-2' }}</div>
+  </div>
+
+  <!-- Balance Due -->
+
+</div>
+
+
+
             </div>
           </div>
         </div>
@@ -139,6 +238,60 @@ interface PaymentInitResponse {
     </main>
   `,
   styles: [`
+
+    .ghk-billing-summary {
+  margin: 1rem 0;
+  font-size: 0.95rem;
+  color: #111;
+}
+
+.ghk-bgrp {
+  margin-bottom: 1rem;
+}
+
+.ghk-btitle {
+  font-weight: 600;
+  color: var(--ghk-blue, #0066b3);
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0.4rem;
+}
+
+.ghk-brow,
+.ghk-bsubtotal,
+.ghk-btotal {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.ghk-brow .ghk-bname {
+  flex: 1;
+}
+
+.ghk-bamt {
+  min-width: 100px;
+  text-align: right;
+}
+
+.ghk-bsubtotal {
+  font-weight: 600;
+  margin-top: 0.4rem;
+  border-top: 1px dashed #ccc;
+  padding-top: 0.3rem;
+}
+
+.ghk-btotal {
+  font-weight: 700;
+  font-size: 1rem;
+  margin-top: 0.6rem;
+}
+
+.ghk-zh-line {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
 .ghk-payment-btn[disabled] {
   opacity: 0.55;
   cursor: not-allowed;
@@ -206,7 +359,17 @@ export class TicketStatusPage implements OnInit {
   get isInvoiced(): boolean {
     return (this.ticketInfo?.patientJourneyStatus?.toUpperCase() === 'INVOICED') ;
   }
+get _items(): BillingItem[] { return this.ticketInfo?.summary?.items ?? []; }
+get hospitalItems(): BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'HF'); }
+get doctorItems():   BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'DF'); }
+get discountItems(): BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'DC'); }
 
+get hospitalTotal(): number { return this.hospitalItems.reduce((s,i)=>s+(i.totalCharge||0),0); }
+get doctorTotal():   number { return this.doctorItems.reduce((s,i)=>s+(i.totalCharge||0),0); }
+get discountTotal(): number { return this.discountItems.reduce((s,i)=>s+(i.totalCharge||0),0); } // likely negative
+
+get grandTotal():   number { return this.hospitalTotal + this.doctorTotal; }
+get balanceDue():   number { return this.grandTotal + this.discountTotal; }
   get ticketMessageHtml(): string {
     if (!this.ticketInfo) return '';
     const en = this.ticketInfo.statusMessageEn ?? '';

@@ -9,6 +9,6 @@ import { TermsPage } from './term-and-conditions.page';
     { path: 'payment/failure', component: PaymentFailurePage },
       { path: 'terms', component: TermsPage },
   { path: '', redirectTo: '/ticket', pathMatch: 'full' }, // Redirect root to /ticket
-  { path: '**', redirectTo: '/ticket' },
+
 
 ];
