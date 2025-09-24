@@ -101,13 +101,16 @@ export function decryptPayload(data: string): Record<string, unknown> {
           <span>Amount:</span>
           <span class="amt">HKD {{ amount }}</span>
         </div>
-<div class="btn-row" *ngIf="referenceNo">
+<div class="btn-row" *ngIf="canInovicePrint">
   <button class="dl-btn" (click)="downloadInvoice()">
     Download Invoice
     <span lang="zh" class="ghk-zh">下載收據</span>
   </button>
 </div>
-
+<div class="dl-error" *ngIf="downloadErrorEn || downloadErrorZh" aria-live="polite">
+  <div>{{ downloadErrorEn }}</div>
+  <div *ngIf="downloadErrorZh" lang="zh" class="ghk-zh">{{ downloadErrorZh }}</div>
+</div>
       </section>
     </main>
   `,
@@ -151,7 +154,13 @@ export function decryptPayload(data: string): Record<string, unknown> {
     }
     .ref { color:#0f172a; font-weight:600; word-break:break-all; }
     .amt { color:#0f172a; font-weight:600; }
-
+.dl-error {
+  margin-top: 8px;
+  color: #b91c1c;   /* red-700 */
+  font-size: 13px;
+  text-align: center;
+}
+.dl-error [lang="zh"] { display:block; font-size:12px; opacity:.9; }
   `]
 })
 
@@ -165,7 +174,9 @@ private apiUrl = '';
   referenceNo = '';
   amount = '';
   now = new Date();
-
+  canInovicePrint = false;
+downloadErrorEn = '';
+downloadErrorZh = '';
   get isAccept() { return this.decision?.toUpperCase() === 'ACCEPT'; }
 
   ngOnInit() {
@@ -176,6 +187,7 @@ private apiUrl = '';
       this.decision = String(payload['decision'] ?? '');
       this.referenceNo = String(payload['reference_number'] ?? '');
       this.amount = String(payload['amount'] ?? '');
+      this.canInovicePrint =  (payload['canInvoicePrint'] ?? 'true') == 'true';
     }
       fetch('assets/config.json')
     .then(r => r.json())
@@ -188,9 +200,14 @@ downloadInvoice() {
   const url = `${this.apiUrl}/api/Ticket/GetInvoicePrintout`;
   this.http.post(url, JSON.stringify(this.referenceNo), {
     headers: { 'Content-Type': 'application/json' },
-    responseType: 'blob'
+    responseType: 'blob',
+    observe: 'response'
   }).subscribe({
-    next: (blob) => {
+    next: (res) => {
+      this.downloadErrorEn = '';
+      this.downloadErrorZh = '';
+
+      const blob = res.body as Blob;
       const file = new Blob([blob], { type: 'application/pdf' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(file);
@@ -199,6 +216,15 @@ downloadInvoice() {
       link.click();
       link.remove();
       URL.revokeObjectURL(link.href);
+    },
+    error: (err) => {
+      if (err.status === 409) {
+        this.downloadErrorEn = 'Download limit exceeded. Invoice already downloaded.';
+        this.downloadErrorZh = '下載次數已達上限，該收據已下載。';
+      } else {
+        this.downloadErrorEn = 'Unable to download invoice. Please try again later.';
+        this.downloadErrorZh = '無法下載收據，請稍後再試。';
+      }
     }
   });
 }
