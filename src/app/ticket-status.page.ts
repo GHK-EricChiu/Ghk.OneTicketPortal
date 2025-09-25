@@ -13,6 +13,7 @@ interface TicketInfo {
   patientJourneyStatus?: string;    // e.g. "INVOICED", "COMPLETED", etc.
   statusMessageEn?: string;
   statusMessageZh?: string;
+  canPayOnline?: boolean;
   amount? : string;
   summary?: BillingSummary;
 }
@@ -71,44 +72,60 @@ interface PaymentInitResponse {
 
         <!-- Status message from backend -->
         <div class="ghk-ticket-status-content">
-          <p *ngIf="ticketInfo && !showPaymentOptions" [innerHTML]="ticketMessageHtml"></p>
+          <p *ngIf="ticketInfo && !showPaymentOptions && ticketInfo?.canPayOnline" [innerHTML]="ticketMessageHtml"></p>
 
           <!-- Online payment only when INVOICED -->
           <div *ngIf="ticketInfo?.isSuccess && isInvoiced">
-           <div class="ghk-terms-consent" *ngIf="!showPaymentOptions">
-  <input
-    id="termsCheck"
-    type="checkbox"
-    [checked]="agreeTerms"
-    (change)="agreeTerms = $any($event.target).checked"
-    aria-describedby="termsDesc"
-  />
-
-
-  <div id="termsDesc" class="ghk-terms-desc">
-    I have read and understood and agree to abide by the
-    <a href="/terms"  class="ghk-terms-link">
-      terms and conditions
-    </a>.<br>
-    <span lang="zh" class="ghk-zh-line">
-      已閱讀並理解上述
-      <a href="/terms"   lang="zh" class="ghk-terms-link">
-        條款與條件
-      </a>，並同意遵守。
-    </span>
+          <div
+  *ngIf="ticketInfo?.canPayOnline === false && ticketInfo?.isSuccess && isInvoiced"
+  class="ghk-alert ghk-alert-limit"
+  role="alert"
+  aria-live="polite"
+>
+  <div class="ghk-alert-title">
+    <span>Amount Exceed</span><br>
+    <span lang="zh" class="ghk-zh-line">金額超出限額</span>
   </div>
+
+  <p class="ghk-alert-text">
+    Your transaction amount exceeds the set limit. Please proceed to the Business Office cashier to settle your payment.<br>
+    <span lang="zh" class="ghk-zh-line">您的交易金額已超出設定限額，請前往收費處繳費。</span>
+  </p>
 </div>
+           <div class="ghk-terms-consent" *ngIf="!showPaymentOptions && ticketInfo?.canPayOnline">
+              <input
+                id="termsCheck"
+                type="checkbox"
+                [checked]="agreeTerms"
+                (change)="agreeTerms = $any($event.target).checked"
+                aria-describedby="termsDesc"
+              />
+
+
+              <div id="termsDesc" class="ghk-terms-desc">
+                I have read and understood and agree to abide by the
+                <a href="/terms"  class="ghk-terms-link">
+                  terms and conditions
+                </a>.<br>
+                <span lang="zh" class="ghk-zh-line">
+                  已閱讀並理解上述
+                  <a href="/terms"   lang="zh" class="ghk-terms-link">
+                    條款與條件
+                  </a>，並同意遵守。
+                </span>
+              </div>
+            </div>
 
 
             <button
               class="ghk-payment-btn"
               (click)="showPaymentOptions = true"
-              *ngIf="!showPaymentOptions"   [disabled]="!agreeTerms"
+              *ngIf="!showPaymentOptions && ticketInfo?.canPayOnline"   [disabled]="!agreeTerms"
             >
               Online Payment 線上付款
             </button>
 
-            <div *ngIf="showPaymentOptions">
+            <div *ngIf="showPaymentOptions || ticketInfo?.canPayOnline === false">
             <div class="ghk-btotal">
                 <div>
                   <span>BALANCE DUE</span><br>
@@ -117,7 +134,7 @@ interface PaymentInitResponse {
                 <div class="ghk-bamt">{{ balanceDue | number:'1.2-2' }}</div>
               </div>
 
-                 <div class="ghk-payment-options">
+                 <div class="ghk-payment-options"  *ngIf="ticketInfo?.canPayOnline"> >
                 <div class="ghk-payment-icons">
                   <button class="ghk-pay-icon-btn" (click)="onPay('visa')" title="Visa">
                     <img src="assets/payment/visa.svg" alt="Visa" />
@@ -244,7 +261,22 @@ interface PaymentInitResponse {
   font-size: 0.95rem;
   color: #111;
 }
-
+.ghk-alert {
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 10px 0 14px;
+}
+.ghk-alert-limit {
+  background: #fff7ed;             /* soft amber */
+  border: 1px solid #fdba74;       /* amber-300 */
+  box-shadow: 0 4px 10px rgba(253, 186, 116, 0.25);
+}
+.ghk-alert-title {
+  font-weight: 700;
+  color: #9a3412;                  /* amber-800 */
+  margin-bottom: 6px;
+}
+.ghk-alert-text { margin: 0; color: #7c2d12; }
 .ghk-bgrp {
   margin-bottom: 1rem;
 }
