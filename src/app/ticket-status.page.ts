@@ -72,7 +72,7 @@ interface PaymentInitResponse {
 
         <!-- Status message from backend -->
         <div class="ghk-ticket-status-content">
-          <p *ngIf="ticketInfo && !showPaymentOptions && ticketInfo?.canPayOnline" [innerHTML]="ticketMessageHtml"></p>
+          <p *ngIf="ticketInfo && !showPaymentOptions && ticketInfo?.canPayOnline != false" [innerHTML]="ticketMessageHtml"></p>
 
           <!-- Online payment only when INVOICED -->
           <div *ngIf="ticketInfo?.isSuccess && isInvoiced">
