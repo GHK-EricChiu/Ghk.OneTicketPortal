@@ -201,6 +201,7 @@ downloadInvoice() {
   this.http.post(url, JSON.stringify(this.referenceNo), {
     headers: { 'Content-Type': 'application/json' },
     responseType: 'blob',
+  withCredentials: true     ,
     observe: 'response'
   }).subscribe({
     next: (res) => {

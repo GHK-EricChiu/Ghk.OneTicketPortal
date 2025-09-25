@@ -134,7 +134,7 @@ interface PaymentInitResponse {
                 <div class="ghk-bamt">{{ balanceDue | number:'1.2-2' }}</div>
               </div>
 
-                 <div class="ghk-payment-options"  *ngIf="ticketInfo?.canPayOnline"> >
+                 <div class="ghk-payment-options"  *ngIf="ticketInfo?.canPayOnline">
                 <div class="ghk-payment-icons">
                   <button class="ghk-pay-icon-btn" (click)="onPay('visa')" title="Visa">
                     <img src="assets/payment/visa.svg" alt="Visa" />
@@ -464,7 +464,7 @@ get balanceDue():   number { return this.grandTotal + this.discountTotal; }
       method
     };
 
-    this.http.post<PaymentInitResponse>(`${this.apiUrl}/api/Ticket/InitiatePayment`, body )
+    this.http.post<PaymentInitResponse>(`${this.apiUrl}/api/Ticket/InitiatePayment`, body,{withCredentials: true}     )
       .subscribe({
         next: res => this.submitToGateway(res),
         error: _ => this.payError = 'Unable to initiate payment. Please try again.'
