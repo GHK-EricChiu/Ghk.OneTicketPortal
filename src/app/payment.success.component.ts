@@ -242,7 +242,7 @@ export class PaymentSuccessComponent implements OnInit {
         this.downloadErrorZh = '';
 
         const blob = res.body as Blob;
-        const file = new Blob([blob], { type: 'application/pdf' });
+        const file = new Blob([blob], { type: 'application/octet-stream' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(file);
         link.download = `invoice-${this.referenceNo.replace(/[^A-Za-z0-9._-]/g, '')}.pdf`;
