@@ -14,7 +14,7 @@ interface TicketInfo {
   statusMessageEn?: string;
   statusMessageZh?: string;
   canPayOnline?: boolean;
-  amount? : string;
+  amount?: string;
   summary?: BillingSummary;
 }
 
@@ -33,6 +33,18 @@ interface BillingItem {
 interface PaymentInitResponse {
   paymentUrl: string;
   fields: Record<string, string>;
+}
+
+// Google Pay global namespace
+declare const google: any;
+
+interface GooglePayConfig {
+  environment?: 'TEST' | 'PRODUCTION';
+  merchantId?: string;
+  merchantName?: string;
+  gateway?: 'cybersource';
+  gatewayMerchantId?: string;
+  wcfServiceUrl?: string;
 }
 
 @Component({
@@ -135,7 +147,7 @@ interface PaymentInitResponse {
               </div>
 
                  <div class="ghk-payment-options"  *ngIf="ticketInfo?.canPayOnline">
-                <div class="ghk-payment-icons">
+                <div class="ghk-payment-icons" *ngIf="!gpayReady">
                   <button class="ghk-pay-icon-btn" (click)="onPay('visa')" title="Visa">
                     <img src="assets/payment/visa.svg" alt="Visa" />
                   </button>
@@ -151,7 +163,9 @@ interface PaymentInitResponse {
                   <button class="ghk-pay-icon-btn" (click)="onPay('amex')" title="AMEX">
                     <img src="assets/payment/amex.svg" alt="AMEX" />
                   </button>
-
+<button class="ghk-pay-icon-btn" (click)="onPay('googlepay')" title="Google Pay">
+                    <img src="assets/payment/googlepay.svg" alt="Google Pay" />
+                  </button>
                   <!-- (Apple/Google Pay later via Simple Order API) -->
                   <!--  <img src="assets/payment/alipay.svg" alt="Alipay" title="Alipay" />-->
                   <!--  <img src="assets/payment/wechatpay.svg" alt="WeChat Pay" title="WeChat Pay" />-->
@@ -159,7 +173,9 @@ interface PaymentInitResponse {
                   <!--  <img src="assets/payment/applepay.svg" alt="Apple Pay" title="Apple Pay" />  -->
                 </div>
                   <div class="ghk-ticket-status-divider"></div>
-              </div>
+                  <!-- Google Pay official button is injected here when available -->
+                  <div id="gpay-container"></div>
+                </div>
 
               <div *ngIf="payError" class="ghk-pay-error">{{ payError }}</div>
            <div *ngIf="ticketInfo?.summary" class="ghk-billing-summary">
@@ -387,21 +403,32 @@ export class TicketStatusPage implements OnInit {
   payError = '';
   agreeTerms = false;
   private apiUrl = '';
-    ticketId: String | null = '';
+  ticketId: String | null = '';
+  // Google Pay state
+  private gpayClient: any | null = null;
+  gpayReady = false;
+  private wcfServiceUrl: string | null = null;
+  private gpayConfig: GooglePayConfig = {
+    environment: 'TEST',
+    merchantId: undefined,
+    merchantName: 'Gleneagles Hospital Hong Kong',
+    gateway: 'cybersource',
+    gatewayMerchantId: 'gphk088031858218'
+  };
   get isInvoiced(): boolean {
-    return (this.ticketInfo?.patientJourneyStatus?.toUpperCase() === 'INVOICED') ;
+    return (this.ticketInfo?.patientJourneyStatus?.toUpperCase() === 'INVOICED');
   }
-get _items(): BillingItem[] { return this.ticketInfo?.summary?.items ?? []; }
-get hospitalItems(): BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'HF'); }
-get doctorItems():   BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'DF'); }
-get discountItems(): BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'DC'); }
+  get _items(): BillingItem[] { return this.ticketInfo?.summary?.items ?? []; }
+  get hospitalItems(): BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'HF'); }
+  get doctorItems(): BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'DF'); }
+  get discountItems(): BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'DC'); }
 
-get hospitalTotal(): number { return this.hospitalItems.reduce((s,i)=>s+(i.totalCharge||0),0); }
-get doctorTotal():   number { return this.doctorItems.reduce((s,i)=>s+(i.totalCharge||0),0); }
-get discountTotal(): number { return this.discountItems.reduce((s,i)=>s+(i.totalCharge||0),0); } // likely negative
+  get hospitalTotal(): number { return this.hospitalItems.reduce((s, i) => s + (i.totalCharge || 0), 0); }
+  get doctorTotal(): number { return this.doctorItems.reduce((s, i) => s + (i.totalCharge || 0), 0); }
+  get discountTotal(): number { return this.discountItems.reduce((s, i) => s + (i.totalCharge || 0), 0); } // likely negative
 
-get grandTotal():   number { return this.hospitalTotal + this.doctorTotal; }
-get balanceDue():   number { return this.grandTotal + this.discountTotal; }
+  get grandTotal(): number { return this.hospitalTotal + this.doctorTotal + this.discountTotal; }
+  get balanceDue(): number { return this.ticketInfo?.amount ? parseFloat(this.ticketInfo.amount) : 0; }
   get ticketMessageHtml(): string {
     if (!this.ticketInfo) return '';
     const en = this.ticketInfo.statusMessageEn ?? '';
@@ -413,19 +440,32 @@ get balanceDue():   number { return this.grandTotal + this.discountTotal; }
     private http: HttpClient,
     private cd: ChangeDetectorRef,
     private zone: NgZone
-  ) {}
+  ) { }
 
   ngOnInit() {
     if (typeof window === 'undefined') return;
 
     const params = new URLSearchParams(window.location.search);
-      this.ticketId = params.get('data');
+    this.ticketId = params.get('data');
 
-    this.http.get<{ apiUrl: string   }>('assets/config.json').subscribe(cfg => {
+    this.http.get<any>('assets/config.json').subscribe(cfg => {
       this.apiUrl = cfg.apiUrl;
+      if (this.apiUrl) {
+        this.http.get<GooglePayConfig>(`${this.apiUrl}/api/Ticket/GooglePayConfig`).subscribe({
+          next: gp => {
+            this.gpayConfig.environment = (gp.environment || this.gpayConfig.environment) as any;
+            this.gpayConfig.merchantId = gp.merchantId || this.gpayConfig.merchantId;
+            this.gpayConfig.merchantName = gp.merchantName || this.gpayConfig.merchantName;
+            this.gpayConfig.gateway = (gp.gateway as any) || this.gpayConfig.gateway;
+            this.gpayConfig.gatewayMerchantId = gp.gatewayMerchantId || this.gpayConfig.gatewayMerchantId;
+            this.wcfServiceUrl = gp.wcfServiceUrl || this.wcfServiceUrl;
+          },
+          error: _ => { /* keep defaults */ }
+        });
+      }
 
-      if ( this.ticketId && this.apiUrl) {
-        this.http.get<TicketInfo>(`${this.apiUrl}/api/Ticket/GetTicketInfo/${ this.ticketId}` ).subscribe({
+      if (this.ticketId && this.apiUrl) {
+        this.http.get<TicketInfo>(`${this.apiUrl}/api/Ticket/GetTicketInfo/${this.ticketId}`).subscribe({
           next: info => {
             this.zone.run(() => {
               this.ticketInfo = info;
@@ -441,30 +481,35 @@ get balanceDue():   number { return this.grandTotal + this.discountTotal; }
             this.cd.markForCheck();
           }
         });
-      }else{
+      } else {
         this.ticketInfo = {
-              isSuccess: false,
-              statusMessageEn: 'Invalid QR code',
-              statusMessageZh: '二維碼無效'
-            };
-            this.cd.markForCheck();
+          isSuccess: false,
+          statusMessageEn: 'Invalid QR code',
+          statusMessageZh: '二維碼無效'
+        };
+        this.cd.markForCheck();
       }
     });
   }
 
-  onPay(method: 'visa' | 'mastercard' | 'cup' | 'jcb' | 'amex' | 'card') {
+  onPay(method: 'visa' | 'mastercard' | 'cup' | 'jcb' | 'amex' | 'card' | 'googlepay') {
     this.payError = '';
     if (!this.ticketInfo?.isSuccess || !this.apiUrl || !this.ticketInfo.displayTicketNumber) {
       this.payError = 'Payment is not available right now.';
       return;
     }
 
+    if (method === 'googlepay') {
+      this.startGooglePay();
+      return;
+    }
+
     const body = {
-      ticketNumber:   this.ticketId,
+      ticketNumber: this.ticketId,
       method
     };
 
-    this.http.post<PaymentInitResponse>(`${this.apiUrl}/api/Ticket/InitiatePayment`, body,{withCredentials: true}     )
+    this.http.post<PaymentInitResponse>(`${this.apiUrl}/api/Ticket/InitiatePayment`, body, { withCredentials: true })
       .subscribe({
         next: res => this.submitToGateway(res),
         error: _ => this.payError = 'Unable to initiate payment. Please try again.'
@@ -496,5 +541,220 @@ get balanceDue():   number { return this.grandTotal + this.discountTotal; }
 
     document.body.appendChild(form);
     submit.click();
+  }
+
+  // --- Google Pay (pay.js) integration ---
+  private async startGooglePay() {
+    try {
+      const ok = await this.waitForPayJs();
+      if (!ok) {
+        this.payError = 'Google Pay script not available. Please try again.';
+        return;
+      }
+
+      if (!this.gpayClient) {
+        this.gpayClient = new google.payments.api.PaymentsClient({
+          environment: this.gpayConfig.environment || 'TEST'
+        });
+      }
+
+      const isReadyReq = {
+        apiVersion: 2,
+        apiVersionMinor: 0,
+        // Use base card method (no tokenization) for readiness check
+        allowedPaymentMethods: [this.getGoogleBaseCardMethod()]
+      };
+
+      this.gpayClient.isReadyToPay(isReadyReq).then((res: any) => {
+        if (res?.result) {
+          this.renderGooglePayButton();
+        } else {
+          this.payError = 'Google Pay is not available on this device.';
+        }
+      }).catch((_err: any) => {
+        this.payError = 'Unable to initialize Google Pay.';
+      });
+    } catch {
+      this.payError = 'Google Pay initialization error.';
+    }
+  }
+
+  private waitForPayJs(maxMs = 3000): Promise<boolean> {
+    const start = Date.now();
+    return new Promise(resolve => {
+      const tick = () => {
+        const ready = (window as any).google && google.payments && google.payments.api;
+        if (ready) return resolve(true);
+        if (Date.now() - start > maxMs) return resolve(false);
+        setTimeout(tick, 100);
+      };
+      tick();
+    });
+  }
+
+  private renderGooglePayButton() {
+    if (!this.gpayClient) return;
+    const container = document.getElementById('gpay-root') || document.getElementById('gpay-container');
+    if (!container) return;
+
+    if (!this.gpayReady) {
+      const btn = this.gpayClient.createButton({ onClick: () => this.loadGooglePaymentData() });
+      container.innerHTML = '';
+      container.appendChild(btn);
+      this.gpayReady = true;
+      this.cd.markForCheck();
+      // optional: scroll into view to make the change visible
+      try { btn.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch { }
+    }
+  }
+
+  private getGoogleBaseCardMethod() {
+    return {
+      type: 'CARD',
+      parameters: {
+        allowedAuthMethods: ['PAN_ONLY', 'CRYPTOGRAM_3DS'],
+        allowedCardNetworks: ['AMEX', 'MASTERCARD', 'VISA', 'JCB']
+      }
+    };
+  }
+
+  private getTokenizationSpec() {
+    return {
+      type: 'PAYMENT_GATEWAY',
+      parameters: {
+        gateway: this.gpayConfig.gateway || 'cybersource',
+        gatewayMerchantId: this.gpayConfig.gatewayMerchantId || ''
+      }
+    };
+  }
+
+  private getGoogleCardPaymentMethod() {
+    const method = this.getGoogleBaseCardMethod();
+    return { ...method, tokenizationSpecification: this.getTokenizationSpec() };
+  }
+
+  private getPaymentDataRequest() {
+    const amount = Math.max(0, (this.balanceDue) || 0).toFixed(2);
+    const req: any = {
+      apiVersion: 2,
+      apiVersionMinor: 0,
+      allowedPaymentMethods: [this.getGoogleCardPaymentMethod()],
+      transactionInfo: {
+        totalPriceStatus: 'FINAL',
+        totalPrice: amount,
+        currencyCode: 'HKD'
+      },
+      merchantInfo: {
+        merchantName: this.gpayConfig.merchantName || 'Merchant',
+        ...(this.gpayConfig.merchantId ? { merchantId: this.gpayConfig.merchantId } : {})
+      }
+    };
+    return req;
+  }
+
+  private loadGooglePaymentData() {
+    if (!this.gpayClient) return;
+    const request = this.getPaymentDataRequest();
+    this.gpayClient.loadPaymentData(request)
+      .then((paymentData: any) => this.onGooglePaymentAuthorized(paymentData))
+      .catch((_err: any) => {
+        this.payError = 'Google Pay was cancelled or failed.';
+      });
+  }
+
+  private async onGooglePaymentAuthorized(paymentData: any) {
+    try {
+      const tokenJson = paymentData?.paymentMethodData?.tokenizationData?.token;
+      if (!tokenJson) {
+        this.payError = 'No Google Pay token received.';
+        return;
+      }
+
+      // Post to backend API; TicketController will call WCF when method is googlepay
+      const url = `${this.apiUrl}/api/Ticket/InitiatePayment`;
+      const body = {
+        ticketNumber: this.ticketId,
+        method: 'googlepay',
+        googlePayToken: window.btoa(tokenJson),
+        googlePayTransactionId: paymentData?.googleTransactionId || undefined
+      } as any;
+
+      this.http.post<any>(url, body, { withCredentials: true }).subscribe({
+        next: (res) => {
+          const redirect = res?.redirectUrl;
+          if (redirect) {
+            window.location.href = redirect;
+            return;
+          }
+          this.payError = 'Payment processed but no redirect provided.';
+        },
+        error: (err) => {
+          const redirect = err?.error?.redirectUrl;
+          if (redirect) {
+            window.location.href = redirect;
+            return;
+          }
+          this.payError = 'Failed to submit Google Pay token. Please try again.';
+        }
+      });
+    } catch {
+      this.payError = 'Error processing Google Pay token.';
+    }
+  }
+
+  // Base64 helper no longer used for Google Pay tokens; keep if needed elsewhere
+  // private toBase64(str: string): string {
+  //   try { return btoa(unescape(encodeURIComponent(str))); } catch { return btoa(str); }
+  // }
+
+  private async callWcfGooglePayAuthorize(token: string, googleTxId?: string): Promise<{ success: boolean; decision?: string; reasonCode?: string; requestId?: string; }> {
+    const amount = Math.max(0, (this.balanceDue) || 0).toFixed(2);
+    const currency = 'HKD';
+    const orderNumber = String(this.ticketId || this.ticketInfo?.displayTicketNumber || '');
+    const svcUrl: string = this.wcfServiceUrl || `${window.location.origin}/GHK.OneTicketPortal.WcfService/GooglePayService.svc`;
+    const soapAction = 'http://tempuri.org/IGooglePayService/Authorize';
+
+    const soap = `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <Authorize xmlns="http://tempuri.org/">
+      <request xmlns:d4p1="http://schemas.datacontract.org/2004/07/GHK.OneTicketPortal.WcfService.Models" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+        <d4p1:Amount>${amount}</d4p1:Amount>
+        <d4p1:Currency>${currency}</d4p1:Currency>
+        <d4p1:GooglePayToken><![CDATA[${window.btoa(token)}]]></d4p1:GooglePayToken>
+        <d4p1:GooglePayTransactionId>${googleTxId || ''}</d4p1:GooglePayTransactionId>
+        <d4p1:OrderNumber>${orderNumber}</d4p1:OrderNumber>
+      </request>
+    </Authorize>
+  </s:Body>
+ </s:Envelope>`;
+
+    try {
+      const res = await fetch(svcUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset=utf-8',
+          'SOAPAction': soapAction
+        },
+        body: soap,
+        credentials: 'include'
+      });
+
+      const text = await res.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(text, 'text/xml');
+      const pick = (name: string) => {
+        const nodes = Array.from(doc.getElementsByTagName('*')) as Element[];
+        const el = nodes.find(n => n.localName === name);
+        return el?.textContent || '';
+      };
+      const success = pick('Success').toLowerCase() === 'true';
+      const decision = pick('Decision');
+      const reasonCode = pick('ReasonCode');
+      const requestId = pick('RequestId');
+      return { success, decision, reasonCode, requestId };
+    } catch {
+      return { success: false };
+    }
   }
 }
