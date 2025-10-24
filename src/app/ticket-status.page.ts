@@ -163,7 +163,7 @@ interface GooglePayConfig {
                   <button class="ghk-pay-icon-btn" (click)="onPay('amex')" title="AMEX">
                     <img src="assets/payment/amex.svg" alt="AMEX" />
                   </button>
-<button class="ghk-pay-icon-btn" (click)="onPay('googlepay')" title="Google Pay">
+<button class="ghk-pay-icon-btn" (click)="onPay('googlepay')" title="Google Pay"  *ngIf="gpayConfig.merchantId != null">
                     <img src="assets/payment/googlepay.svg" alt="Google Pay" />
                   </button>
                   <!-- (Apple/Google Pay later via Simple Order API) -->
@@ -408,7 +408,7 @@ export class TicketStatusPage implements OnInit {
   private gpayClient: any | null = null;
   gpayReady = false;
   private wcfServiceUrl: string | null = null;
-  private gpayConfig: GooglePayConfig = {
+  gpayConfig: GooglePayConfig = {
     environment: 'TEST',
     merchantId: undefined,
     merchantName: 'Gleneagles Hospital Hong Kong',
