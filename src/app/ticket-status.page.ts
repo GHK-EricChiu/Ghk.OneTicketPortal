@@ -1,6 +1,7 @@
 import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
 
 interface TicketInfo {
   isSuccess: boolean;
@@ -37,6 +38,7 @@ interface PaymentInitResponse {
 
 // Google Pay global namespace
 declare const google: any;
+declare const ApplePaySession: any;
 
 interface GooglePayConfig {
   environment?: 'TEST' | 'PRODUCTION';
@@ -86,10 +88,10 @@ interface GooglePayConfig {
         <div class="ghk-ticket-status-content">
           <p *ngIf="ticketInfo && !showPaymentOptions && ticketInfo?.canPayOnline != false" [innerHTML]="ticketMessageHtml"></p>
 
-          <!-- Online payment only when INVOICED -->
-          <div *ngIf="ticketInfo?.isSuccess && isInvoiced">
+          <!-- Online payment only when READY_TO_PAYMENT / INVOICED -->
+          <div *ngIf="ticketInfo?.isSuccess && isReadyToPay">
           <div
-  *ngIf="ticketInfo?.canPayOnline === false && ticketInfo?.isSuccess && isInvoiced"
+  *ngIf="ticketInfo?.canPayOnline === false && ticketInfo?.isSuccess && isReadyToPay"
   class="ghk-alert ghk-alert-limit"
   role="alert"
   aria-live="polite"
@@ -163,10 +165,20 @@ interface GooglePayConfig {
                   <button class="ghk-pay-icon-btn" (click)="onPay('amex')" title="AMEX">
                     <img src="assets/payment/amex.svg" alt="AMEX" />
                   </button>
+                  <button class="ghk-pay-icon-btn" (click)="onPay('applepay')" title="Apple Pay" *ngIf="showApplePay">
+                    <img src="assets/payment/applepay.svg" alt="Apple Pay" />
+                  </button>
 <button class="ghk-pay-icon-btn" (click)="onPay('googlepay')" title="Google Pay"  *ngIf="gpayConfig.merchantId != null">
                     <img src="assets/payment/googlepay.svg" alt="Google Pay" />
                   </button>
+                  <button class="ghk-pay-icon-btn" (click)="onPay('alipay')" title="Alipay">
+                    <img src="assets/payment/alipay.svg" alt="Alipay" />
+                  </button>
+                  <button class="ghk-pay-icon-btn" (click)="onPay('wechatpay')" title="WeChat Pay">
+                    <img src="assets/payment/wechatpay.svg" alt="WeChat Pay" />
+                  </button>
                   <!-- (Apple/Google Pay later via Simple Order API) -->
+                      
                   <!--  <img src="assets/payment/alipay.svg" alt="Alipay" title="Alipay" />-->
                   <!--  <img src="assets/payment/wechatpay.svg" alt="WeChat Pay" title="WeChat Pay" />-->
                   <!--  <img src="assets/payment/googlepay.svg" alt="Google Pay" title="Google Pay" />-->
@@ -415,8 +427,14 @@ export class TicketStatusPage implements OnInit {
     gateway: 'cybersource',
     gatewayMerchantId: 'gphk088031858218'
   };
-  get isInvoiced(): boolean {
-    return (this.ticketInfo?.patientJourneyStatus?.toUpperCase() === 'INVOICED');
+  applePayAvailable = false;
+  private applePaySession: any | null = null;
+  get isReadyToPay(): boolean {
+    const status = this.ticketInfo?.patientJourneyStatus?.toUpperCase();
+    return status === 'INVOICED' || status === 'READY_TO_PAYMENT';
+  }
+  get showApplePay(): boolean {
+    return this.applePayAvailable && this.isReadyToPay && !!this.ticketInfo?.canPayOnline;
   }
   get _items(): BillingItem[] { return this.ticketInfo?.summary?.items ?? []; }
   get hospitalItems(): BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'HF'); }
@@ -447,6 +465,7 @@ export class TicketStatusPage implements OnInit {
 
     const params = new URLSearchParams(window.location.search);
     this.ticketId = params.get('data');
+    this.checkApplePayAvailability();
 
     this.http.get<any>('assets/config.json').subscribe(cfg => {
       this.apiUrl = cfg.apiUrl;
@@ -492,7 +511,7 @@ export class TicketStatusPage implements OnInit {
     });
   }
 
-  onPay(method: 'visa' | 'mastercard' | 'cup' | 'jcb' | 'amex' | 'card' | 'googlepay') {
+  onPay(method: 'visa' | 'mastercard' | 'cup' | 'jcb' | 'amex' | 'card' | 'googlepay' | 'wechatpay' | 'alipay' | 'applepay') {
     this.payError = '';
     if (!this.ticketInfo?.isSuccess || !this.apiUrl || !this.ticketInfo.displayTicketNumber) {
       this.payError = 'Payment is not available right now.';
@@ -501,6 +520,10 @@ export class TicketStatusPage implements OnInit {
 
     if (method === 'googlepay') {
       this.startGooglePay();
+      return;
+    }
+    if (method === 'applepay') {
+      this.startApplePay();
       return;
     }
 
@@ -541,6 +564,151 @@ export class TicketStatusPage implements OnInit {
 
     document.body.appendChild(form);
     submit.click();
+  }
+
+  // --- Apple Pay integration ---
+  private async checkApplePayAvailability() {
+    console.log('[ApplePay] Checking availability...');
+    if (typeof window === 'undefined') return;
+    const sessionCtor = (window as any).ApplePaySession;
+    if (!sessionCtor || (typeof sessionCtor.supportsVersion === 'function' && !sessionCtor.supportsVersion(3))) {
+      console.log('[ApplePay] ApplePaySession unavailable or version < 3');
+      this.applePayAvailable = false;
+      return;
+    }
+
+    try {
+      const canPay = await sessionCtor.canMakePayments();
+      console.log('[ApplePay] canMakePayments result:', canPay);
+      this.zone.run(() => {
+        this.applePayAvailable = !!canPay;
+        this.cd.markForCheck();
+      });
+    } catch (err) {
+      console.warn('[ApplePay] canMakePayments threw', err);
+      this.zone.run(() => {
+        this.applePayAvailable = false;
+        this.cd.markForCheck();
+      });
+    }
+  }
+
+  async startApplePay() {
+    this.payError = '';
+    if (!this.apiUrl || !this.ticketInfo?.isSuccess) {
+      this.payError = 'Apple Pay is not available right now.';
+      return;
+    }
+
+    if (!this.showApplePay) {
+      this.payError = 'Apple Pay is not available on this device.';
+      return;
+    }
+
+    const request = this.buildApplePayRequest();
+    const SessionCtor = (window as any).ApplePaySession;
+    const supportsVersion = !SessionCtor?.supportsVersion || SessionCtor.supportsVersion(3);
+    if (!SessionCtor || !request || !supportsVersion) {
+      this.payError = 'Apple Pay cannot be started.';
+      return;
+    }
+
+    try {
+      this.applePaySession = new SessionCtor(3, request);
+    } catch {
+      this.payError = 'Apple Pay cannot be started.';
+      this.applePaySession = null;
+      return;
+    }
+
+    this.applePaySession.onvalidatemerchant = (event: any) => this.handleApplePayMerchantValidation(event?.validationURL);
+    this.applePaySession.onpaymentauthorized = (event: any) => this.handleApplePayPaymentAuthorized(event?.payment);
+    this.applePaySession.oncancel = () => { this.payError = 'Payment cancelled.'; };
+
+    try {
+      this.applePaySession.begin();
+    } catch {
+      this.payError = 'Unable to open Apple Pay sheet.';
+      this.applePaySession = null;
+    }
+  }
+
+  private buildApplePayRequest() {
+    const amount = Math.max(0, (this.balanceDue) || 0).toFixed(2);
+    const label = this.ticketInfo?.clinicNameEn || this.ticketInfo?.statusMessageEn || 'Hospital Payment';
+    return {
+      countryCode: 'HK',
+      currencyCode: 'HKD',
+      total: { label, amount },
+      supportedNetworks: ['visa', 'masterCard', 'chinaUnionPay'],
+      merchantCapabilities: ['supports3DS']
+    };
+  }
+
+  private async handleApplePayMerchantValidation(validationUrl?: string) {
+    if (!this.applePaySession || !validationUrl || !this.apiUrl) {
+      this.payError = 'Unable to validate Apple Pay merchant.';
+      this.applePaySession?.abort();
+      this.applePaySession = null;
+      return;
+    }
+
+    try {
+      const merchantSession = await firstValueFrom(
+        this.http.post<any>(`${this.apiUrl}/api/applepay/validate-merchant`, { validationUrl }, { withCredentials: true })
+      );
+      this.applePaySession.completeMerchantValidation(merchantSession);
+    } catch {
+      this.payError = 'Unable to validate Apple Pay merchant.';
+      try { this.applePaySession.abort(); } catch { }
+      this.applePaySession = null;
+    }
+  }
+
+  private async handleApplePayPaymentAuthorized(payment: any) {
+    if (!this.applePaySession || !this.apiUrl) {
+      this.payError = 'Apple Pay authorization failed.';
+      return;
+    }
+
+    try {
+      const paymentData = payment?.token?.paymentData;
+      if (!paymentData) {
+        this.payError = 'Missing Apple Pay payment data.';
+        this.applePaySession.completePayment((ApplePaySession as any).STATUS_FAILURE);
+        this.applePaySession = null;
+        return;
+      }
+
+      const paymentDataBase64 = this.toBase64(JSON.stringify(paymentData));
+      const ticketNumber = this.ticketId ?? this.ticketInfo?.displayTicketNumber ?? '';
+      const body = {
+        ticketNumber,
+        method: 'applepay',
+        applePayPaymentDataBase64: paymentDataBase64
+      };
+
+      const res = await firstValueFrom(
+        this.http.post<PaymentInitResponse>(`${this.apiUrl}/api/Ticket/InitiatePayment`, body, { withCredentials: true })
+      );
+
+      this.applePaySession.completePayment((ApplePaySession as any).STATUS_SUCCESS);
+      this.applePaySession = null;
+
+      if (res?.paymentUrl && res?.fields) {
+        this.submitToGateway(res);
+      } else {
+        this.payError = 'Apple Pay payment setup incomplete.';
+      }
+    } catch {
+      try { this.applePaySession.completePayment((ApplePaySession as any).STATUS_FAILURE); } catch { }
+      this.applePaySession = null;
+      this.payError = 'Apple Pay authorization failed. Please try again.';
+    }
+  }
+
+  private toBase64(str: string): string {
+    try { return btoa(unescape(encodeURIComponent(str))); } catch { return btoa(str); }
   }
 
   // --- Google Pay (pay.js) integration ---
@@ -701,11 +869,6 @@ export class TicketStatusPage implements OnInit {
       this.payError = 'Error processing Google Pay token.';
     }
   }
-
-  // Base64 helper no longer used for Google Pay tokens; keep if needed elsewhere
-  // private toBase64(str: string): string {
-  //   try { return btoa(unescape(encodeURIComponent(str))); } catch { return btoa(str); }
-  // }
 
   private async callWcfGooglePayAuthorize(token: string, googleTxId?: string): Promise<{ success: boolean; decision?: string; reasonCode?: string; requestId?: string; }> {
     const amount = Math.max(0, (this.balanceDue) || 0).toFixed(2);
