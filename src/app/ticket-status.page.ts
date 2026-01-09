@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
+﻿import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -16,17 +16,19 @@ interface TicketInfo {
   statusMessageZh?: string;
   canPayOnline?: boolean;
   amount?: string;
-  summary?: BillingSummary;
+  summary?: MultiBillingSummary[];
 }
 
 
-interface BillingSummary {
+interface MultiBillingSummary {
   invoiceNum?: string;
-  items?: BillingItem[];
+  clinicName?: string;
+  items?: MultiBillingItem[];
 }
 
-interface BillingItem {
+interface MultiBillingItem {
   type?: string;
+  date?: string;
   itemName?: string;
   totalCharge: number;
   billingItemTypeCode?: string | null;
@@ -86,7 +88,7 @@ interface GooglePayConfig {
 
         <!-- Status message from backend -->
         <div class="ghk-ticket-status-content">
-          <p *ngIf="ticketInfo && !showPaymentOptions && ticketInfo?.canPayOnline != false" [innerHTML]="ticketMessageHtml"></p>
+          <p *ngIf="ticketInfo && !showPaymentOptions && ticketInfo.canPayOnline != false" [innerHTML]="ticketMessageHtml"></p>
 
           <!-- Online payment only when READY_TO_PAYMENT / INVOICED -->
           <div *ngIf="ticketInfo?.isSuccess && isReadyToPay">
@@ -134,7 +136,7 @@ interface GooglePayConfig {
             <button
               class="ghk-payment-btn"
               (click)="showPaymentOptions = true"
-              *ngIf="!showPaymentOptions && ticketInfo?.canPayOnline"   [disabled]="!agreeTerms"
+              *ngIf="!showPaymentOptions && ticketInfo?.canPayOnline"   [disabled]="!agreeTerms || payLoading"
             >
               Online Payment 線上付款
             </button>
@@ -189,92 +191,100 @@ interface GooglePayConfig {
                   <div id="gpay-container"></div>
                 </div>
 
+              <div *ngIf="payLoading" class="ghk-pay-loading">Processing payment...</div>
               <div *ngIf="payError" class="ghk-pay-error">{{ payError }}</div>
-           <div *ngIf="ticketInfo?.summary" class="ghk-billing-summary">
+           <div *ngIf="ticketInfo?.summary?.length" class="ghk-multi-billing">
+             <div class="ghk-multi-card" *ngFor="let s of ticketInfo?.summary; let i = index">
+               <button class="ghk-multi-header" type="button" (click)="toggleSummary(i)">
+                 <div class="ghk-multi-title">
+                   <div class="ghk-multi-invoice">{{ s.invoiceNum || 'Invoice' }}</div>
+                   <div class="ghk-multi-clinic" *ngIf="s.clinicName">{{ s.clinicName }}</div>
+                 </div>
+                 <div class="ghk-multi-amount"> 
+                   <div class="ghk-multi-value">$ {{ getGrandTotalForSummary(s) | number:'1.2-2' }}</div>
+                 </div>
+                 <div class="ghk-multi-chevron" [class.open]="isSummaryExpanded(i)">&#9662;</div>
+               </button>
 
-  <!-- Hospital Fee -->
-  <div class="ghk-bgrp">
-    <div class="ghk-btitle">
-      <span>HOSPITAL FEE</span>
-      <span lang="zh" class="ghk-zh-line">醫院收費</span>
-    </div>
+               <div class="ghk-multi-body" *ngIf="isSummaryExpanded(i)">
+                 <div class="ghk-billing-summary">
+                   <div class="ghk-bgrp" *ngIf="getHospitalItemsForSummary(s).length">
+                     <div class="ghk-btitle">
+                       <span>HOSPITAL FEE</span>
+                       <span lang="zh" class="ghk-zh-line">醫院收費</span>
+                     </div>
 
-    <div class="ghk-brow" *ngFor="let it of hospitalItems">
-      <div class="ghk-bname">{{ it.itemName }}</div>
-      <div class="ghk-bamt">{{ it.totalCharge | number:'1.2-2' }}</div>
-    </div>
+                     <div class="ghk-brow" *ngFor="let it of getHospitalItemsForSummary(s)">
+                       <div class="ghk-bname">{{ it.itemName }}</div>
+                       <div class="ghk-bamt">{{ it.totalCharge | number:'1.2-2' }}</div>
+                     </div>
 
-    <div class="ghk-bsubtotal">
-      <div>
-        <span>Total Hospital Charges</span><br>
-        <span lang="zh" class="ghk-zh-line">總醫院收費</span>
-      </div>
-      <div class="ghk-bamt">{{ hospitalTotal | number:'1.2-2' }}</div>
-    </div>
-  </div>
+                     <div class="ghk-bsubtotal">
+                       <div>
+                         <span>Total Hospital Charges</span><br>
+                         <span lang="zh" class="ghk-zh-line">總醫院收費</span>
+                       </div>
+                       <div class="ghk-bamt">{{ getHospitalTotalForSummary(s) | number:'1.2-2' }}</div>
+                     </div>
+                   </div>
 
-  <div class="ghk-ticket-status-divider"></div>
+                   <div class="ghk-ticket-status-divider"></div>
 
-  <!-- Doctor Fee -->
-  <div class="ghk-bgrp">
-    <div class="ghk-btitle">
-      <span>DOCTOR FEE</span>
-      <span lang="zh" class="ghk-zh-line">醫生收費</span>
-    </div>
+                   <div class="ghk-bgrp" *ngIf="getDoctorItemsForSummary(s).length">
+                     <div class="ghk-btitle">
+                       <span>DOCTOR FEE</span>
+                       <span lang="zh" class="ghk-zh-line">醫生收費</span>
+                     </div>
 
-    <div class="ghk-brow" *ngFor="let it of doctorItems">
-      <div class="ghk-bname">{{ it.itemName }}</div>
-      <div class="ghk-bamt">{{ it.totalCharge | number:'1.2-2' }}</div>
-    </div>
+                     <div class="ghk-brow" *ngFor="let it of getDoctorItemsForSummary(s)">
+                       <div class="ghk-bname">{{ it.itemName }}</div>
+                       <div class="ghk-bamt">{{ it.totalCharge | number:'1.2-2' }}</div>
+                     </div>
 
-    <div class="ghk-bsubtotal">
-      <div>
-        <span>Total Doctor Charges</span><br>
-        <span lang="zh" class="ghk-zh-line">總醫生收費</span>
-      </div>
-      <div class="ghk-bamt">{{ doctorTotal | number:'1.2-2' }}</div>
-    </div>
-  </div>
+                     <div class="ghk-bsubtotal">
+                       <div>
+                         <span>Total Doctor Charges</span><br>
+                         <span lang="zh" class="ghk-zh-line">總醫生收費</span>
+                       </div>
+                       <div class="ghk-bamt">{{ getDoctorTotalForSummary(s) | number:'1.2-2' }}</div>
+                     </div>
+                   </div>
 
-  <div class="ghk-ticket-status-divider"></div>
+                   <div class="ghk-ticket-status-divider" *ngIf="getDiscountItemsForSummary(s).length"></div>
 
-  <!-- Less (Discount) -->
-  <div class="ghk-bgrp" *ngIf="discountItems.length">
-    <div class="ghk-btitle">
-      <span>LESS</span>
-      <span lang="zh" class="ghk-zh-line">扣減</span>
-    </div>
+                   <div class="ghk-bgrp" *ngIf="getDiscountItemsForSummary(s).length">
+                     <div class="ghk-btitle">
+                       <span>LESS</span>
+                       <span lang="zh" class="ghk-zh-line">扣減</span>
+                     </div>
 
-    <div class="ghk-brow" *ngFor="let it of discountItems">
-      <div class="ghk-bname">{{ it.itemName }}</div>
-      <div class="ghk-bamt">{{ it.totalCharge | number:'1.2-2' }}</div>
-    </div>
+                     <div class="ghk-brow" *ngFor="let it of getDiscountItemsForSummary(s)">
+                       <div class="ghk-bname">{{ it.itemName }}</div>
+                       <div class="ghk-bamt">{{ it.totalCharge | number:'1.2-2' }}</div>
+                     </div>
 
-    <div class="ghk-bsubtotal">
-      <div>
-        <span>LESS</span><br>
-        <span lang="zh" class="ghk-zh-line">扣減</span>
-      </div>
-      <div class="ghk-bamt">{{ discountTotal | number:'1.2-2' }}</div>
-    </div>
-  </div>
+                     <div class="ghk-bsubtotal">
+                       <div>
+                         <span>LESS</span><br>
+                         <span lang="zh" class="ghk-zh-line">扣減</span>
+                       </div>
+                       <div class="ghk-bamt">{{ getDiscountTotalForSummary(s) | number:'1.2-2' }}</div>
+                     </div>
+                   </div>
 
-  <div class="ghk-ticket-status-divider"></div>
+                   <div class="ghk-ticket-status-divider"></div>
 
-  <!-- Grand Total -->
-  <div class="ghk-btotal">
-    <div>
-      <span>Grand Total</span><br>
-      <span lang="zh" class="ghk-zh-line">總額</span>
-    </div>
-    <div class="ghk-bamt">{{ grandTotal | number:'1.2-2' }}</div>
-  </div>
-
-  <!-- Balance Due -->
-
-</div>
-
-
+                   <div class="ghk-btotal">
+                     <div>
+                       <span>Grand Total</span><br>
+                       <span lang="zh" class="ghk-zh-line">總額</span>
+                     </div>
+                     <div class="ghk-bamt">{{ getGrandTotalForSummary(s) | number:'1.2-2' }}</div>
+                   </div>
+                 </div>
+               </div>
+             </div>
+           </div>
 
             </div>
           </div>
@@ -284,10 +294,75 @@ interface GooglePayConfig {
   `,
   styles: [`
 
-    .ghk-billing-summary {
+.ghk-billing-summary {
   margin: 1rem 0;
   font-size: 0.95rem;
   color: #111;
+}
+.ghk-multi-billing {
+  margin: 0.5rem 0 1rem;
+}
+.ghk-multi-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  margin: 0.6rem 0;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+.ghk-multi-header {
+  width: 100%;
+  border: 0;
+  background: #f8fafc;
+  display: grid;
+  grid-template-columns: 1fr auto 16px;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.ghk-multi-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ghk-multi-invoice {
+  font-weight: 700;
+  color: #0f172a;
+}
+.ghk-multi-clinic {
+  font-size: 0.9rem;
+  color: #475569;
+}
+.ghk-multi-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.ghk-multi-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #64748b;
+}
+.ghk-multi-value {
+  font-weight: 700;
+  color: #0f172a;
+}
+.ghk-multi-chevron {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #64748b;
+  transition: transform 0.2s ease;
+}
+.ghk-multi-chevron.open {
+  transform: rotate(180deg);
+}
+.ghk-multi-body {
+  padding: 6px 12px 10px;
 }
 .ghk-alert {
   border-radius: 12px;
@@ -404,16 +479,19 @@ interface GooglePayConfig {
     .ghk-payment-btn:active { background: #004080; transform: translateY(0); box-shadow: 0 2px 6px rgba(0, 64, 128, 0.25); }
     .ghk-payment-icons { display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:1rem; justify-content:center; }
     .ghk-payment-icons img { height:24px; width:auto; }
-    .ghk-pay-icon-btn { background: transparent; border: 0; padding: 0; cursor: pointer; }
-    .ghk-pay-icon-btn img { height: 28px; }
-    .ghk-pay-error { color:#c00; margin-top:8px; }
+.ghk-pay-icon-btn { background: transparent; border: 0; padding: 0; cursor: pointer; }
+.ghk-pay-icon-btn img { height: 28px; }
+.ghk-pay-error { color:#c00; margin-top:8px; }
+.ghk-pay-loading { color:#0f172a; margin-top:8px; font-weight:600; }
   `]
 })
 export class TicketStatusPage implements OnInit {
   ticketInfo: TicketInfo | null = null;
   showPaymentOptions = false;
   payError = '';
+  payLoading = false;
   agreeTerms = false;
+  expandedSummaryIndex: number | null = null;
   private apiUrl = '';
   ticketId: String | null = '';
   // Google Pay state
@@ -436,16 +514,6 @@ export class TicketStatusPage implements OnInit {
   get showApplePay(): boolean {
     return this.applePayAvailable && this.isReadyToPay && !!this.ticketInfo?.canPayOnline;
   }
-  get _items(): BillingItem[] { return this.ticketInfo?.summary?.items ?? []; }
-  get hospitalItems(): BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'HF'); }
-  get doctorItems(): BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'DF'); }
-  get discountItems(): BillingItem[] { return this._items.filter(i => (i.type ?? '').toUpperCase() === 'DC'); }
-
-  get hospitalTotal(): number { return this.hospitalItems.reduce((s, i) => s + (i.totalCharge || 0), 0); }
-  get doctorTotal(): number { return this.doctorItems.reduce((s, i) => s + (i.totalCharge || 0), 0); }
-  get discountTotal(): number { return this.discountItems.reduce((s, i) => s + (i.totalCharge || 0), 0); } // likely negative
-
-  get grandTotal(): number { return this.hospitalTotal + this.doctorTotal + this.discountTotal; }
   get balanceDue(): number { return this.ticketInfo?.amount ? parseFloat(this.ticketInfo.amount) : 0; }
   get ticketMessageHtml(): string {
     if (!this.ticketInfo) return '';
@@ -459,6 +527,46 @@ export class TicketStatusPage implements OnInit {
     private cd: ChangeDetectorRef,
     private zone: NgZone
   ) { }
+
+  toggleSummary(index: number) {
+    this.expandedSummaryIndex = this.expandedSummaryIndex === index ? null : index;
+  }
+
+  isSummaryExpanded(index: number): boolean {
+    return this.expandedSummaryIndex === index;
+  }
+
+  private getSummaryItems(summary: MultiBillingSummary | null | undefined): MultiBillingItem[] {
+    return summary?.items ?? [];
+  }
+
+  getHospitalItemsForSummary(summary: MultiBillingSummary | null | undefined): MultiBillingItem[] {
+    return this.getSummaryItems(summary).filter(i => (i.type ?? '').toUpperCase() === 'HF');
+  }
+
+  getDoctorItemsForSummary(summary: MultiBillingSummary | null | undefined): MultiBillingItem[] {
+    return this.getSummaryItems(summary).filter(i => (i.type ?? '').toUpperCase() === 'DF');
+  }
+
+  getDiscountItemsForSummary(summary: MultiBillingSummary | null | undefined): MultiBillingItem[] {
+    return this.getSummaryItems(summary).filter(i => (i.type ?? '').toUpperCase() === 'DC');
+  }
+
+  getHospitalTotalForSummary(summary: MultiBillingSummary | null | undefined): number {
+    return this.getHospitalItemsForSummary(summary).reduce((s, i) => s + (i.totalCharge || 0), 0);
+  }
+
+  getDoctorTotalForSummary(summary: MultiBillingSummary | null | undefined): number {
+    return this.getDoctorItemsForSummary(summary).reduce((s, i) => s + (i.totalCharge || 0), 0);
+  }
+
+  getDiscountTotalForSummary(summary: MultiBillingSummary | null | undefined): number {
+    return this.getDiscountItemsForSummary(summary).reduce((s, i) => s + (i.totalCharge || 0), 0);
+  }
+
+  getGrandTotalForSummary(summary: MultiBillingSummary | null | undefined): number {
+    return this.getHospitalTotalForSummary(summary) + this.getDoctorTotalForSummary(summary) + this.getDiscountTotalForSummary(summary);
+  }
 
   ngOnInit() {
     if (typeof window === 'undefined') return;
@@ -494,7 +602,7 @@ export class TicketStatusPage implements OnInit {
           error: _ => {
             this.ticketInfo = {
               isSuccess: false,
-              statusMessageEn: 'We’re currently experiencing a temporary service disruption. Our team is working to resolve the issue as quickly as possible. Thank you for your patience.',
+              statusMessageEn: 'We\'re currently experiencing a temporary service disruption. Our team is working to resolve the issue as quickly as possible. Thank you for your patience.',
               statusMessageZh: '我們目前正在處理系統問題，服務將儘快恢復，感謝您的耐心等候。'
             };
             this.cd.markForCheck();
@@ -512,6 +620,7 @@ export class TicketStatusPage implements OnInit {
   }
 
   onPay(method: 'visa' | 'mastercard' | 'cup' | 'jcb' | 'amex' | 'card' | 'googlepay' | 'wechatpay' | 'alipay' | 'applepay') {
+    if (this.payLoading) return;
     this.payError = '';
     if (!this.ticketInfo?.isSuccess || !this.apiUrl || !this.ticketInfo.displayTicketNumber) {
       this.payError = 'Payment is not available right now.';
@@ -532,10 +641,17 @@ export class TicketStatusPage implements OnInit {
       method
     };
 
+    this.payLoading = true;
     this.http.post<PaymentInitResponse>(`${this.apiUrl}/api/Ticket/InitiatePayment`, body, { withCredentials: true })
       .subscribe({
-        next: res => this.submitToGateway(res),
-        error: _ => this.payError = 'Unable to initiate payment. Please try again.'
+        next: res => {
+          this.payLoading = false;
+          this.submitToGateway(res);
+        },
+        error: _ => {
+          this.payLoading = false;
+          this.payError = 'Unable to initiate payment. Please try again.';
+        }
       });
   }
 
@@ -688,9 +804,11 @@ export class TicketStatusPage implements OnInit {
         applePayPaymentDataBase64: paymentDataBase64
       };
 
+      this.payLoading = true;
       const res = await firstValueFrom(
         this.http.post<PaymentInitResponse>(`${this.apiUrl}/api/Ticket/InitiatePayment`, body, { withCredentials: true })
       );
+      this.payLoading = false;
 
       this.applePaySession.completePayment((ApplePaySession as any).STATUS_SUCCESS);
       this.applePaySession = null;
@@ -701,6 +819,7 @@ export class TicketStatusPage implements OnInit {
         this.payError = 'Apple Pay payment setup incomplete.';
       }
     } catch {
+      this.payLoading = false;
       try { this.applePaySession.completePayment((ApplePaySession as any).STATUS_FAILURE); } catch { }
       this.applePaySession = null;
       this.payError = 'Apple Pay authorization failed. Please try again.';
@@ -708,7 +827,7 @@ export class TicketStatusPage implements OnInit {
   }
 
   private toBase64(str: string): string {
-    try { return btoa(unescape(encodeURIComponent(str))); } catch { return btoa(str); }
+    return btoa(unescape(encodeURIComponent(str)));
   }
 
   // --- Google Pay (pay.js) integration ---
@@ -847,8 +966,10 @@ export class TicketStatusPage implements OnInit {
         googlePayTransactionId: paymentData?.googleTransactionId || undefined
       } as any;
 
+      this.payLoading = true;
       this.http.post<any>(url, body, { withCredentials: true }).subscribe({
         next: (res) => {
+          this.payLoading = false;
           const redirect = res?.redirectUrl;
           if (redirect) {
             window.location.href = redirect;
@@ -857,6 +978,7 @@ export class TicketStatusPage implements OnInit {
           this.payError = 'Payment processed but no redirect provided.';
         },
         error: (err) => {
+          this.payLoading = false;
           const redirect = err?.error?.redirectUrl;
           if (redirect) {
             window.location.href = redirect;
