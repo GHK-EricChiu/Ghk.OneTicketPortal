@@ -135,7 +135,7 @@ interface GooglePayConfig {
 
             <button
               class="ghk-payment-btn"
-              (click)="showPaymentOptions = true"
+              (click)="openPaymentOptions()"
               *ngIf="!showPaymentOptions && ticketInfo?.canPayOnline"   [disabled]="!agreeTerms || payLoading"
             >
               Online Payment 線上付款
@@ -151,7 +151,7 @@ interface GooglePayConfig {
               </div>
 
                  <div class="ghk-payment-options"  *ngIf="ticketInfo?.canPayOnline">
-                <div class="ghk-payment-icons" *ngIf="!gpayReady">
+                <div class="ghk-payment-icons">
                   <button class="ghk-pay-icon-btn" (click)="onPay('visa')" title="Visa">
                     <img src="assets/payment/visa.svg" alt="Visa" />
                   </button>
@@ -170,9 +170,9 @@ interface GooglePayConfig {
                   <button class="ghk-pay-icon-btn" (click)="onPay('applepay')" title="Apple Pay" *ngIf="showApplePay">
                     <img src="assets/payment/applepay.svg" alt="Apple Pay" />
                   </button>
-<button class="ghk-pay-icon-btn" (click)="onPay('googlepay')" title="Google Pay"  *ngIf="gpayConfig.merchantId != null">
-                    <img src="assets/payment/googlepay.svg" alt="Google Pay" />
-                  </button>
+                  <!-- Google Pay official button is injected here when available -->
+                  <div id="gpay-container"></div>
+                  
                   <button class="ghk-pay-icon-btn" (click)="onPay('alipay')" title="Alipay">
                     <img src="assets/payment/alipay.svg" alt="Alipay" />
                   </button>
@@ -187,11 +187,14 @@ interface GooglePayConfig {
                   <!--  <img src="assets/payment/applepay.svg" alt="Apple Pay" title="Apple Pay" />  -->
                 </div>
                   <div class="ghk-ticket-status-divider"></div>
-                  <!-- Google Pay official button is injected here when available -->
-                  <div id="gpay-container"></div>
                 </div>
 
-              <div *ngIf="payLoading" class="ghk-pay-loading">Processing payment...</div>
+              <div *ngIf="payLoading" class="ghk-busy-overlay" role="status" aria-live="polite">
+                <div class="ghk-busy-panel">
+                  <span class="ghk-spinner" aria-hidden="true"></span>
+                  <span class="ghk-busy-text">Processing payment...</span>
+                </div>
+              </div>
               <div *ngIf="payError" class="ghk-pay-error">{{ payError }}</div>
            <div *ngIf="ticketInfo?.summary?.length" class="ghk-multi-billing">
              <div class="ghk-multi-card" *ngFor="let s of ticketInfo?.summary; let i = index">
@@ -482,7 +485,48 @@ interface GooglePayConfig {
 .ghk-pay-icon-btn { background: transparent; border: 0; padding: 0; cursor: pointer; }
 .ghk-pay-icon-btn img { height: 28px; }
 .ghk-pay-error { color:#c00; margin-top:8px; }
-.ghk-pay-loading { color:#0f172a; margin-top:8px; font-weight:600; }
+.ghk-busy-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.ghk-busy-panel {
+  background: #fff;
+  border-radius: 12px;
+  padding: 18px 22px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.15);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.ghk-busy-text {
+  color: #0f172a;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.ghk-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid #cbd5e1;
+  border-top-color: #0f172a;
+  border-radius: 50%;
+  animation: ghk-spin 0.9s linear infinite;
+}
+.ghk-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+@keyframes ghk-spin { to { transform: rotate(360deg); } }
   `]
 })
 export class TicketStatusPage implements OnInit {
@@ -586,6 +630,9 @@ export class TicketStatusPage implements OnInit {
             this.gpayConfig.gateway = (gp.gateway as any) || this.gpayConfig.gateway;
             this.gpayConfig.gatewayMerchantId = gp.gatewayMerchantId || this.gpayConfig.gatewayMerchantId;
             this.wcfServiceUrl = gp.wcfServiceUrl || this.wcfServiceUrl;
+            if (this.showPaymentOptions && this.ticketInfo?.canPayOnline) {
+              setTimeout(() => this.startGooglePay(), 0);
+            }
           },
           error: _ => { /* keep defaults */ }
         });
@@ -653,6 +700,14 @@ export class TicketStatusPage implements OnInit {
           this.payError = 'Unable to initiate payment. Please try again.';
         }
       });
+  }
+
+  openPaymentOptions() {
+    this.showPaymentOptions = true;
+    this.cd.markForCheck();
+    if (this.ticketInfo?.canPayOnline) {
+      setTimeout(() => this.startGooglePay(), 0);
+    }
   }
 
   private submitToGateway(res: PaymentInitResponse) {
@@ -885,7 +940,14 @@ export class TicketStatusPage implements OnInit {
     if (!container) return;
 
     if (!this.gpayReady) {
-      const btn = this.gpayClient.createButton({ onClick: () => this.loadGooglePaymentData() });
+      const btn = this.gpayClient.createButton({
+        buttonColor: 'default',
+        buttonType: 'pay',
+        buttonRadius: 4,
+        buttonBorderType: 'default_border',
+        onClick: () => this.loadGooglePaymentData(),
+        allowedPaymentMethods: [this.getGoogleCardPaymentMethod()]
+      });
       container.innerHTML = '';
       container.appendChild(btn);
       this.gpayReady = true;

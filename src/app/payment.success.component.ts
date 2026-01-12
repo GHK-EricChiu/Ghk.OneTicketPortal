@@ -103,7 +103,7 @@ export function decryptPayload(data: string): Record<string, unknown> {
         </div>
 <div class="btn-row" *ngIf="canInovicePrint">
   <button class="dl-btn" (click)="downloadInvoice()">
-    Download Invoice
+    Download Invoice(s)
     <span lang="zh" class="ghk-zh">下載收據</span>
   </button>
 </div>
@@ -177,6 +177,10 @@ export class PaymentSuccessComponent implements OnInit {
   canInovicePrint = false;
   downloadErrorEn = '';
   downloadErrorZh = '';
+  autoDownload = false;
+  invoiceNums: string[] = [];
+  private autoDownloadTriggered = false;
+  private dialogShown = false;
   get isAccept() { return this.decision?.toUpperCase() === 'ACCEPT'; }
 
   ngOnInit() {
@@ -189,10 +193,15 @@ export class PaymentSuccessComponent implements OnInit {
       this.amount = String(payload['amount'] ?? '');
       // initialize from payload but we'll prefer server-side check below
       this.canInovicePrint = (payload['canInvoicePrint'] ?? 'false') == 'true';
+      this.autoDownload = this.parseBool(payload['autoDownload']);
+      this.invoiceNums = this.parseInvoiceNums(payload['invoiceNums']);
     }
     fetch('assets/config.json')
       .then(r => r.json())
-      .then(cfg => { this.apiUrl = cfg.apiUrl ?? ''; });
+      .then(cfg => {
+        this.apiUrl = cfg.apiUrl ?? '';
+        this.tryAutoDownload();
+      });
   }
 
   // After view init we can call server to get authoritative permission to print
@@ -201,6 +210,7 @@ export class PaymentSuccessComponent implements OnInit {
     // then attempt the server call. This keeps the change minimal; if the app
     // lifecycle ensures apiUrl is available earlier, the call will proceed.
     setTimeout(() => this.checkCanPrint(), 50);
+    setTimeout(() => this.showDownloadDialogIfNeeded(), 0);
   }
 
   private checkCanPrint() {
@@ -219,49 +229,104 @@ export class PaymentSuccessComponent implements OnInit {
         } catch {
           // leave existing value if parsing fails
         }
+        this.tryAutoDownload();
       },
       error: (_) => {
         // On error, do not enable invoice printing; keep existing payload value
         this.canInovicePrint = !!this.canInovicePrint;
+        this.tryAutoDownload();
       }
     });
   }
-  downloadInvoice() {
-    if (!this.referenceNo || !this.apiUrl) return;
 
+  private tryAutoDownload() {
+    if (this.autoDownloadTriggered) return;
+    if (!this.autoDownload) return;
+    if (!this.canInovicePrint || !this.apiUrl) return;
+    const list = this.invoiceNums.length ? this.invoiceNums : (this.referenceNo ? [this.referenceNo] : []);
+    if (!list.length) return;
+    this.autoDownloadTriggered = true;
+    this.downloadInvoicesSequentially(list);
+  }
 
-    const url = `${this.apiUrl}/api/Ticket/GetInvoicePrintout`;
-    this.http.post(url, JSON.stringify(this.referenceNo), {
-      headers: { 'Content-Type': 'application/json' },
-      responseType: 'blob',
-      withCredentials: true,
-      observe: 'response'
-    }).subscribe({
-      next: (res) => {
-        this.downloadErrorEn = '';
-        this.downloadErrorZh = '';
+  private showDownloadDialogIfNeeded() {
+    if (this.dialogShown) return;
+    if (this.autoDownload) return;
+    this.dialogShown = true;
+    window.alert('Download Invoice first\n請先下載發票');
+  }
 
-        const blob = res.body as Blob;
-        const file = new Blob([blob], { type: 'application/octet-stream' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(file);
-        link.download = `invoice-${this.referenceNo.replace(/[^A-Za-z0-9._-]/g, '')}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(link.href);
-      },
-      error: (err) => {
-        if (err.status === 409) {
-          this.downloadErrorEn = 'Download limit exceeded. Invoice already downloaded.';
-          this.downloadErrorZh = '下載次數已達上限，該收據已下載。';
-        } else {
-          this.downloadErrorEn = 'Unable to download invoice. Please try again later.';
-          this.downloadErrorZh = '無法下載收據，請稍後再試。';
+  private parseBool(value: unknown) {
+    if (value === true || value === false) return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') return value.toLowerCase() === 'true' || value === '1';
+    return false;
+  }
+
+  private parseInvoiceNums(value: unknown) {
+    if (typeof value !== 'string') return [];
+    return value.split(',').map(v => v.trim()).filter(Boolean);
+  }
+
+  private async downloadInvoicesSequentially(invoiceNums: string[]) {
+    for (const invoiceNo of invoiceNums) {
+      // Sequential download to avoid overlapping blob responses.
+      // eslint-disable-next-line no-await-in-loop
+      await this.downloadInvoiceByNumber(invoiceNo);
+    }
+  }
+
+  private downloadInvoiceByNumber(invoiceNo: string) {
+    return new Promise<void>((resolve) => {
+      if (!invoiceNo || !this.apiUrl) {
+        resolve();
+        return;
+      }
+
+      const url = `${this.apiUrl}/api/Ticket/GetInvoicePrintout`;
+      this.http.post(url, JSON.stringify(invoiceNo), {
+        headers: { 'Content-Type': 'application/json' },
+        responseType: 'blob',
+        withCredentials: true,
+        observe: 'response'
+      }).subscribe({
+        next: (res) => {
+          this.downloadErrorEn = '';
+          this.downloadErrorZh = '';
+
+          const blob = res.body as Blob;
+          const file = new Blob([blob], { type: 'application/octet-stream' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(file);
+          link.download = `invoice-${invoiceNo.replace(/[^A-Za-z0-9._-]/g, '')}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(link.href);
+          resolve();
+        },
+        error: (err) => {
+          if (err.status === 409) {
+            this.downloadErrorEn = 'Download limit exceeded. Invoice already downloaded.';
+            this.downloadErrorZh = '下載次數已達上限，該收據已下載。';
+          } else {
+            this.downloadErrorEn = 'Unable to download invoice. Please try again later.';
+            this.downloadErrorZh = '無法下載收據，請稍後再試。';
+          }
+          resolve();
         }
-      }
+      });
     });
   }
+
+  downloadInvoice() {
+    if (!this.apiUrl) return;
+    const list = this.invoiceNums.length ? this.invoiceNums : (this.referenceNo ? [this.referenceNo] : []);
+    if (!list.length) return;
+    this.downloadInvoicesSequentially(list);
+  }
+
+
   onCheckReceipt() {
     // If you have a receipt route or backend receipt URL, push to it here.
     // Example: /receipt?ref=...
