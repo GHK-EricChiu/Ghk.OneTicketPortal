@@ -214,28 +214,41 @@ export class PaymentSuccessComponent implements OnInit {
   }
 
   private checkCanPrint() {
-    if (!this.referenceNo || !this.apiUrl) return;
+    const list = this.invoiceNums.length ? [...this.invoiceNums] : (this.referenceNo ? [this.referenceNo] : []);
+    if (!list.length || !this.apiUrl) return;
+    this.checkCanPrintSequentially(list);
+  }
 
-    const url = `${this.apiUrl}/api/Ticket/CanPrintInvoice`;
-    // Send referenceNo as JSON body (string) to match existing backend expectations
-    this.http.post<boolean>(url, JSON.stringify(this.referenceNo), {
-      headers: { 'Content-Type': 'application/json' },
-      withCredentials: true
-    }).subscribe({
-      next: (res) => {
-        // API returns boolean true/false; coerce to boolean and set
-        try {
-          this.canInovicePrint = Boolean(res);
-        } catch {
-          // leave existing value if parsing fails
-        }
-        this.tryAutoDownload();
-      },
-      error: (_) => {
-        // On error, do not enable invoice printing; keep existing payload value
-        this.canInovicePrint = !!this.canInovicePrint;
-        this.tryAutoDownload();
+  private async checkCanPrintSequentially(invoiceNums: string[]) {
+    const valid: string[] = [];
+    for (const invoiceNo of invoiceNums) {
+      // eslint-disable-next-line no-await-in-loop
+      const canPrint = await this.checkCanPrintByNumber(invoiceNo);
+      if (canPrint) valid.push(invoiceNo);
+    }
+
+    // Keep only printable invoices
+    this.invoiceNums = valid;
+    this.canInovicePrint = valid.length > 0;
+    this.tryAutoDownload();
+  }
+
+  private checkCanPrintByNumber(invoiceNo: string) {
+    return new Promise<boolean>((resolve) => {
+      if (!invoiceNo || !this.apiUrl) {
+        resolve(false);
+        return;
       }
+
+      const url = `${this.apiUrl}/api/Ticket/CanPrintInvoice`;
+      // Send invoice number as JSON body (string) to match backend expectations
+      this.http.post<boolean>(url, JSON.stringify(invoiceNo), {
+        headers: { 'Content-Type': 'application/json' },
+        withCredentials: true
+      }).subscribe({
+        next: (res) => resolve(Boolean(res)),
+        error: (_) => resolve(false)
+      });
     });
   }
 
