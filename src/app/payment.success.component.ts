@@ -259,7 +259,7 @@ export class PaymentSuccessComponent implements OnInit {
     const list = this.invoiceNums.length ? this.invoiceNums : (this.referenceNo ? [this.referenceNo] : []);
     if (!list.length) return;
     this.autoDownloadTriggered = true;
-    this.downloadInvoicesSequentially(list);
+    this.downloadInvoicesSequentially(list, 500);
   }
 
   private showDownloadDialogIfNeeded() {
@@ -281,12 +281,21 @@ export class PaymentSuccessComponent implements OnInit {
     return value.split(',').map(v => v.trim()).filter(Boolean);
   }
 
-  private async downloadInvoicesSequentially(invoiceNums: string[]) {
-    for (const invoiceNo of invoiceNums) {
+  private async downloadInvoicesSequentially(invoiceNums: string[], delayMs = 0) {
+    for (let i = 0; i < invoiceNums.length; i += 1) {
+      const invoiceNo = invoiceNums[i];
       // Sequential download to avoid overlapping blob responses.
       // eslint-disable-next-line no-await-in-loop
       await this.downloadInvoiceByNumber(invoiceNo);
+      if (delayMs > 0 && i < invoiceNums.length - 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await this.delay(delayMs);
+      }
     }
+  }
+
+  private delay(ms: number) {
+    return new Promise<void>((resolve) => setTimeout(resolve, ms));
   }
 
   private downloadInvoiceByNumber(invoiceNo: string) {
