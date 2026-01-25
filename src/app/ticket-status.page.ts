@@ -826,7 +826,7 @@ export class TicketStatusPage implements OnInit {
 
     try {
       const merchantSession = await firstValueFrom(
-        this.http.post<any>(`${this.apiUrl}/api/applepay/validate-merchant`, { validationUrl }, { withCredentials: true })
+        this.http.post<any>(`${this.apiUrl}/api/payments/applepay/validate-merchant`, { validationUrl }, { withCredentials: true })
       );
       this.applePaySession.completeMerchantValidation(merchantSession);
     } catch {
