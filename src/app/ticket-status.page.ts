@@ -860,19 +860,26 @@ export class TicketStatusPage implements OnInit {
       };
 
       this.payLoading = true;
-      const res = await firstValueFrom(
-        this.http.post<PaymentInitResponse>(`${this.apiUrl}/api/Ticket/InitiatePayment`, body, { withCredentials: true })
-      );
-      this.payLoading = false;
 
-      this.applePaySession.completePayment((ApplePaySession as any).STATUS_SUCCESS);
-      this.applePaySession = null;
+      this.http.post<PaymentInitResponse>(`${this.apiUrl}/api/Ticket/InitiatePayment`, body, { withCredentials: true })
+        .subscribe({
+          next: res => {
+            this.payLoading = false;
+            this.applePaySession.completePayment((ApplePaySession as any).STATUS_SUCCESS);
+            this.applePaySession = null;
+            this.submitToGateway(res);
+          },
+          error: _ => {
+            this.payLoading = false;
+            this.applePaySession.completePayment((ApplePaySession as any).STATUS_FAILURE);
+            this.applePaySession = null;
+            this.payError = 'Apple Pay payment setup incomplete.';
+          }
+        });
 
-      if (res?.paymentUrl && res?.fields) {
-        this.submitToGateway(res);
-      } else {
-        this.payError = 'Apple Pay payment setup incomplete.';
-      }
+
+
+
     } catch {
       this.payLoading = false;
       try { this.applePaySession.completePayment((ApplePaySession as any).STATUS_FAILURE); } catch { }
