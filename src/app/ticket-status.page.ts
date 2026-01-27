@@ -812,7 +812,7 @@ export class TicketStatusPage implements OnInit {
 
   private buildApplePayRequest() {
     const amount = Math.max(0, (this.balanceDue) || 0).toFixed(2);
-    const label = this.ticketInfo?.clinicNameEn || this.ticketInfo?.statusMessageEn || 'Hospital Payment';
+    const label = 'Gleneagles Hospital Hong Kong';
     return {
       countryCode: 'HK',
       currencyCode: 'HKD',
