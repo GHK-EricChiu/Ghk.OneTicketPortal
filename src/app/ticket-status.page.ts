@@ -168,7 +168,7 @@ interface GooglePayConfig {
                     <img src="assets/payment/amex.svg" alt="AMEX" />
                   </button>
                   <button  class="apple-pay-button" (click)="onPay('applepay')" title="Apple Pay" *ngIf="showApplePay">
-                    <img src="assets/payment/applepay.svg" alt="Apple Pay" />
+                
                   </button>
                   <!-- Google Pay official button is injected here when available -->
                   <div id="gpay-container"></div>
