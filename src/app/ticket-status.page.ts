@@ -167,7 +167,7 @@ interface GooglePayConfig {
                   <button class="ghk-pay-icon-btn" (click)="onPay('amex')" title="AMEX">
                     <img src="assets/payment/amex.svg" alt="AMEX" />
                   </button>
-                  <button class="ghk-pay-icon-btn" (click)="onPay('applepay')" title="Apple Pay" *ngIf="showApplePay">
+                  <button  class="apple-pay-button" (click)="onPay('applepay')" title="Apple Pay" *ngIf="showApplePay">
                     <img src="assets/payment/applepay.svg" alt="Apple Pay" />
                   </button>
                   <!-- Google Pay official button is injected here when available -->
@@ -296,7 +296,13 @@ interface GooglePayConfig {
     </main>
   `,
   styles: [`
-
+.apple-pay-button {
+  -webkit-appearance: -apple-pay-button;
+  -apple-pay-button-type: checkout; /* buy | checkout | plain */
+  -apple-pay-button-style: black; /* black | white | white-outline */
+  width: 100%;
+  height: 44px;
+}
 .ghk-billing-summary {
   margin: 1rem 0;
   font-size: 0.95rem;
