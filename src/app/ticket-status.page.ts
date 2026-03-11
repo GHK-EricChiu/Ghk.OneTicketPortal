@@ -15,6 +15,8 @@ interface TicketInfo {
   statusMessageEn?: string;
   statusMessageZh?: string;
   canPayOnline?: boolean;
+  canPayByGooglePay?: boolean;
+  canPayByApplePay?: boolean;
   amount?: string;
   summary?: MultiBillingSummary[];
 }
@@ -173,13 +175,12 @@ interface GooglePayConfig {
                   <!-- Google Pay official button is injected here when available -->
                   <div id="gpay-container"></div>
                   
-                  <button class="ghk-pay-icon-btn" (click)="onPay('alipay')" title="Alipay">
+                  <!-- <button class="ghk-pay-icon-btn" (click)="onPay('alipay')" title="Alipay">
                     <img src="assets/payment/alipay.svg" alt="Alipay" />
                   </button>
                   <button class="ghk-pay-icon-btn" (click)="onPay('wechatpay')" title="WeChat Pay">
                     <img src="assets/payment/wechatpay.svg" alt="WeChat Pay" />
-                  </button>
-                  <!-- (Apple/Google Pay later via Simple Order API) -->
+                  </button> -->
                       
                   <!--  <img src="assets/payment/alipay.svg" alt="Alipay" title="Alipay" />-->
                   <!--  <img src="assets/payment/wechatpay.svg" alt="WeChat Pay" title="WeChat Pay" />-->
@@ -562,7 +563,7 @@ export class TicketStatusPage implements OnInit {
     return status === 'INVOICED' || status === 'READY_TO_PAYMENT';
   }
   get showApplePay(): boolean {
-    return this.applePayAvailable && this.isReadyToPay && !!this.ticketInfo?.canPayOnline;
+    return this.applePayAvailable && this.isReadyToPay && !!this.ticketInfo?.canPayOnline && !!this.ticketInfo?.canPayByApplePay;
   }
   get balanceDue(): number { return this.ticketInfo?.amount ? parseFloat(this.ticketInfo.amount) : 0; }
   get ticketMessageHtml(): string {
@@ -636,7 +637,7 @@ export class TicketStatusPage implements OnInit {
             this.gpayConfig.gateway = (gp.gateway as any) || this.gpayConfig.gateway;
             this.gpayConfig.gatewayMerchantId = gp.gatewayMerchantId || this.gpayConfig.gatewayMerchantId;
             this.wcfServiceUrl = gp.wcfServiceUrl || this.wcfServiceUrl;
-            if (this.showPaymentOptions && this.ticketInfo?.canPayOnline) {
+            if (this.showPaymentOptions && this.ticketInfo?.canPayOnline && this.ticketInfo?.canPayByGooglePay) {
               setTimeout(() => this.startGooglePay(), 0);
             }
           },
@@ -711,7 +712,7 @@ export class TicketStatusPage implements OnInit {
   openPaymentOptions() {
     this.showPaymentOptions = true;
     this.cd.markForCheck();
-    if (this.ticketInfo?.canPayOnline) {
+    if (this.ticketInfo?.canPayOnline && this.ticketInfo?.canPayByGooglePay) {
       setTimeout(() => this.startGooglePay(), 0);
     }
   }
