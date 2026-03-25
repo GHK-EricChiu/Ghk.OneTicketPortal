@@ -175,12 +175,12 @@ interface GooglePayConfig {
                   <!-- Google Pay official button is injected here when available -->
                   <div id="gpay-container"></div>
                   
-                  <!-- <button class="ghk-pay-icon-btn" (click)="onPay('alipay')" title="Alipay">
+                 <button class="ghk-pay-icon-btn" (click)="onPay('alipay')" title="Alipay">
                     <img src="assets/payment/alipay.svg" alt="Alipay" />
                   </button>
                   <button class="ghk-pay-icon-btn" (click)="onPay('wechatpay')" title="WeChat Pay">
                     <img src="assets/payment/wechatpay.svg" alt="WeChat Pay" />
-                  </button> -->
+                  </button> 
                       
                   <!--  <img src="assets/payment/alipay.svg" alt="Alipay" title="Alipay" />-->
                   <!--  <img src="assets/payment/wechatpay.svg" alt="WeChat Pay" title="WeChat Pay" />-->
@@ -700,7 +700,7 @@ export class TicketStatusPage implements OnInit {
       .subscribe({
         next: res => {
           this.payLoading = false;
-          this.submitToGateway(res);
+          this.submitToGateway(res, method);
         },
         error: _ => {
           this.payLoading = false;
@@ -717,7 +717,16 @@ export class TicketStatusPage implements OnInit {
     }
   }
 
-  private submitToGateway(res: PaymentInitResponse) {
+  private submitToGateway(res: PaymentInitResponse, method: string) {
+    if (method === 'alipay' || method === 'wechatpay') {
+      if (!res?.paymentUrl) {
+        this.payError = 'Payment setup incomplete.';
+        return;
+      }
+      window.location.href = res.paymentUrl;
+      return;
+    }
+
     if (!res?.paymentUrl || !res?.fields) {
       this.payError = 'Payment setup incomplete.';
       return;
