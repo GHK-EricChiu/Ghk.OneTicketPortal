@@ -178,7 +178,7 @@ interface GooglePayConfig {
                  <button class="ghk-pay-icon-btn" (click)="onPay('alipay')" title="Alipay">
                     <img src="assets/payment/alipay.svg" alt="Alipay" />
                   </button> <button class="ghk-pay-icon-btn" (click)="onPay('alipayhk')" title="AlipayHK">
-                    <img src="assets/payment/alipayhk.svg" alt="AlipayHK" />
+                    <img src="assets/payment/alipay_hk.svg" alt="AlipayHK" />
                   </button>
                   <button class="ghk-pay-icon-btn" (click)="onPay('wechatpay')" title="WeChat Pay">
                     <img src="assets/payment/wechatpay.svg" alt="WeChat Pay" />
