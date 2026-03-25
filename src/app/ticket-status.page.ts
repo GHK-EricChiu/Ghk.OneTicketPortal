@@ -177,6 +177,8 @@ interface GooglePayConfig {
                   
                  <button class="ghk-pay-icon-btn" (click)="onPay('alipay')" title="Alipay">
                     <img src="assets/payment/alipay.svg" alt="Alipay" />
+                  </button> <button class="ghk-pay-icon-btn" (click)="onPay('alipayhk')" title="AlipayHK">
+                    <img src="assets/payment/alipayhk.svg" alt="AlipayHK" />
                   </button>
                   <button class="ghk-pay-icon-btn" (click)="onPay('wechatpay')" title="WeChat Pay">
                     <img src="assets/payment/wechatpay.svg" alt="WeChat Pay" />
@@ -673,7 +675,7 @@ export class TicketStatusPage implements OnInit {
     });
   }
 
-  onPay(method: 'visa' | 'mastercard' | 'cup' | 'jcb' | 'amex' | 'card' | 'googlepay' | 'wechatpay' | 'alipay' | 'applepay') {
+  onPay(method: 'visa' | 'mastercard' | 'cup' | 'jcb' | 'amex' | 'card' | 'googlepay' | 'wechatpay' | 'alipay' | 'alipayhk' | 'applepay') {
     if (this.payLoading) return;
     this.payError = '';
     if (!this.ticketInfo?.isSuccess || !this.apiUrl || !this.ticketInfo.displayTicketNumber) {
@@ -718,7 +720,7 @@ export class TicketStatusPage implements OnInit {
   }
 
   private submitToGateway(res: PaymentInitResponse, method: string) {
-    if (method === 'alipay' || method === 'wechatpay') {
+    if (method === 'alipay' || method === 'wechatpay' || method === 'alipayhk') {
       if (!res?.paymentUrl) {
         this.payError = 'Payment setup incomplete.';
         return;
